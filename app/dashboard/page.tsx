@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import {
   getCustomDays,
   getLast7DaysProgress,
-  getWeekMissionCount,
   getThisWeekMissions,
   DailyProgress,
 } from '@/lib/store';
@@ -18,18 +17,26 @@ export default function DashboardPage() {
   const [weekMissions, setWeekMissions] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    const loaded = getCustomDays();
-    setDays(loaded);
-    setLast7(getLast7DaysProgress(loaded));
-    setMissionStats(getWeekMissionCount());
-    setWeekMissions(getThisWeekMissions());
+    (async () => {
+      const [loadedDays, loadedMissions] = await Promise.all([
+        getCustomDays(),
+        getThisWeekMissions(),
+      ]);
+      setDays(loadedDays);
+      setWeekMissions(loadedMissions);
+      setMissionStats({
+        completed: Object.values(loadedMissions).filter(Boolean).length,
+        total: 7,
+      });
+      const progress = await getLast7DaysProgress(loadedDays);
+      setLast7(progress);
+    })();
   }, []);
 
   const today = last7[last7.length - 1];
   const weekTotal = last7.reduce((sum, d) => sum + d.total, 0);
   const weekCompleted = last7.reduce((sum, d) => sum + d.completed, 0);
   const weekPercent = weekTotal > 0 ? Math.round((weekCompleted / weekTotal) * 100) : 0;
-
   const maxCompleted = Math.max(...last7.map((d) => d.total), 1);
 
   return (
@@ -92,7 +99,13 @@ export default function DashboardPage() {
                       className="w-full rounded-t-lg transition-all duration-500"
                       style={{
                         height: `${Math.max(height, d.total > 0 ? 8 : 0)}%`,
-                        background: isToday ? '#3B82F6' : d.percent >= 80 ? '#10B981' : d.percent >= 50 ? '#F59E0B' : '#E5E7EB',
+                        background: isToday
+                          ? '#3B82F6'
+                          : d.percent >= 80
+                          ? '#10B981'
+                          : d.percent >= 50
+                          ? '#F59E0B'
+                          : '#E5E7EB',
                       }}
                     />
                   </div>
@@ -122,27 +135,15 @@ export default function DashboardPage() {
           <div className="flex items-center gap-3 mb-3">
             <div className="text-3xl font-black text-gray-900">{missionStats.completed}</div>
             <div className="text-gray-400 font-semibold text-sm">de 7 missões<br />concluídas</div>
-            <div className="ml-auto">
-              <div className="text-2xl">
-                {missionStats.completed >= 7
-                  ? '🏆'
-                  : missionStats.completed >= 5
-                  ? '🥈'
-                  : missionStats.completed >= 3
-                  ? '🥉'
-                  : '⭐'}
-              </div>
+            <div className="ml-auto text-2xl">
+              {missionStats.completed >= 7 ? '🏆' : missionStats.completed >= 5 ? '🥈' : missionStats.completed >= 3 ? '🥉' : '⭐'}
             </div>
           </div>
           <div className="grid grid-cols-7 gap-1">
             {days.map((day) => {
               const done = !!weekMissions[day.id];
               return (
-                <div
-                  key={day.id}
-                  className="flex flex-col items-center gap-0.5"
-                  title={day.shortName}
-                >
+                <div key={day.id} className="flex flex-col items-center gap-0.5" title={day.shortName}>
                   <div
                     className="w-7 h-7 rounded-lg flex items-center justify-center text-base font-black text-white"
                     style={{ background: done ? day.color : '#F3F4F6' }}

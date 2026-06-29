@@ -1,16 +1,10 @@
 'use client';
 
-import { CompletionLog, DayConfig, MissionLog } from './types';
-import { DEFAULT_DAYS, JS_DAY_TO_ID } from './data';
+import { DayConfig, Task } from './types';
+import { JS_DAY_TO_ID } from './data';
 
-// ─── Keys ───────────────────────────────────────────────────────────────────
-const COMPLETIONS_KEY = 'marcus_completions';
-const MISSIONS_KEY = 'marcus_missions';
-const CUSTOM_DAYS_KEY = 'marcus_custom_days';
-const PIN_KEY = 'marcus_pin';
-const DEFAULT_PIN = '1234';
+// ── Date helpers (sync) ────────────────────────────────────────────────────────
 
-// ─── Date helpers ────────────────────────────────────────────────────────────
 export function todayString(): string {
   return new Date().toISOString().split('T')[0];
 }
@@ -19,7 +13,6 @@ export function todayDayId(): string {
   return JS_DAY_TO_ID[new Date().getDay()];
 }
 
-/** Returns "YYYY-WNN" (ISO week key) for mission grouping */
 export function weekKey(date?: Date): string {
   const d = date ?? new Date();
   const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -30,144 +23,182 @@ export function weekKey(date?: Date): string {
   return `${tmp.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
 }
 
-// ─── Task Completions ─────────────────────────────────────────────────────────
-export function getCompletions(): CompletionLog {
-  if (typeof window === 'undefined') return {};
+// ── Days ───────────────────────────────────────────────────────────────────────
+
+export async function getCustomDays(): Promise<DayConfig[]> {
   try {
-    return JSON.parse(localStorage.getItem(COMPLETIONS_KEY) ?? '{}');
+    const res = await fetch('/api/days');
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
+}
+
+// ── Task CRUD (admin) ──────────────────────────────────────────────────────────
+
+export async function createTaskApi(dayId: string, task: Task): Promise<void> {
+  await fetch('/api/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dayId, ...task }),
+  });
+}
+
+export async function updateTaskApi(task: Task): Promise<void> {
+  await fetch(`/api/tasks/${task.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(task),
+  });
+}
+
+export async function deleteTaskApi(taskId: string): Promise<void> {
+  await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
+}
+
+export async function reorderTasksApi(orderedIds: string[]): Promise<void> {
+  await fetch('/api/tasks/reorder', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderedIds }),
+  });
+}
+
+export async function updateMissionApi(dayId: string, text: string): Promise<void> {
+  await fetch(`/api/days/${dayId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ missionText: text }),
+  });
+}
+
+// ── Task Completions ───────────────────────────────────────────────────────────
+
+export async function getDayCompletions(
+  date: string,
+  dayId: string,
+): Promise<Record<string, boolean>> {
+  try {
+    const res = await fetch(`/api/completions?date=${date}&dayId=${dayId}`);
+    if (!res.ok) return {};
+    return res.json();
   } catch {
     return {};
   }
 }
 
-export function setTaskComplete(
+export async function setTaskComplete(
   date: string,
   dayId: string,
   taskId: string,
   completed: boolean,
-): void {
-  const log = getCompletions();
-  if (!log[date]) log[date] = {};
-  if (!log[date][dayId]) log[date][dayId] = {};
-  log[date][dayId][taskId] = completed;
-  localStorage.setItem(COMPLETIONS_KEY, JSON.stringify(log));
+): Promise<void> {
+  await fetch('/api/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ date, dayId, taskId, completed }),
+  });
 }
 
-export function isTaskComplete(date: string, dayId: string, taskId: string): boolean {
-  return getCompletions()[date]?.[dayId]?.[taskId] ?? false;
-}
+// ── Mission Log ────────────────────────────────────────────────────────────────
 
-export function getDayCompletions(date: string, dayId: string): Record<string, boolean> {
-  return getCompletions()[date]?.[dayId] ?? {};
-}
-
-// ─── Mission Log ──────────────────────────────────────────────────────────────
-export function getMissionLog(): MissionLog {
-  if (typeof window === 'undefined') return {};
+export async function getThisWeekMissions(): Promise<Record<string, boolean>> {
   try {
-    return JSON.parse(localStorage.getItem(MISSIONS_KEY) ?? '{}');
+    const res = await fetch(`/api/missions?weekKey=${weekKey()}`);
+    if (!res.ok) return {};
+    return res.json();
   } catch {
     return {};
   }
 }
 
-export function setMissionComplete(dayId: string, completed: boolean): void {
-  const log = getMissionLog();
-  const key = weekKey();
-  if (!log[key]) log[key] = {};
-  log[key][dayId] = completed;
-  localStorage.setItem(MISSIONS_KEY, JSON.stringify(log));
+export async function setMissionComplete(dayId: string, completed: boolean): Promise<void> {
+  await fetch('/api/missions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dayId, completed, weekKey: weekKey() }),
+  });
 }
 
-export function isMissionComplete(dayId: string): boolean {
-  return getMissionLog()[weekKey()]?.[dayId] ?? false;
+export async function isMissionComplete(dayId: string): Promise<boolean> {
+  const missions = await getThisWeekMissions();
+  return missions[dayId] ?? false;
 }
 
-export function getThisWeekMissions(): Record<string, boolean> {
-  return getMissionLog()[weekKey()] ?? {};
+export async function getWeekMissionCount(): Promise<{ completed: number; total: number }> {
+  const missions = await getThisWeekMissions();
+  return { completed: Object.values(missions).filter(Boolean).length, total: 7 };
 }
 
-// ─── Custom Days (admin edits) ────────────────────────────────────────────────
-export function getCustomDays(): DayConfig[] {
-  if (typeof window === 'undefined') return DEFAULT_DAYS;
-  try {
-    const raw = localStorage.getItem(CUSTOM_DAYS_KEY);
-    return raw ? JSON.parse(raw) : DEFAULT_DAYS;
-  } catch {
-    return DEFAULT_DAYS;
-  }
-}
+// ── Dashboard ──────────────────────────────────────────────────────────────────
 
-export function saveCustomDays(days: DayConfig[]): void {
-  localStorage.setItem(CUSTOM_DAYS_KEY, JSON.stringify(days));
-}
-
-export function resetToDefaults(): void {
-  localStorage.removeItem(CUSTOM_DAYS_KEY);
-}
-
-// ─── PIN ──────────────────────────────────────────────────────────────────────
-export function getPin(): string {
-  return typeof window !== 'undefined'
-    ? (localStorage.getItem(PIN_KEY) ?? DEFAULT_PIN)
-    : DEFAULT_PIN;
-}
-
-export function setPin(pin: string): void {
-  localStorage.setItem(PIN_KEY, pin);
-}
-
-export function verifyPin(pin: string): boolean {
-  return pin === getPin();
-}
-
-// ─── Dashboard Stats ──────────────────────────────────────────────────────────
 export interface DailyProgress {
   date: string;
-  label: string; // "Seg", "Ter", etc.
+  label: string;
   total: number;
   completed: number;
   percent: number;
 }
 
-export function getLast7DaysProgress(days: DayConfig[]): DailyProgress[] {
-  const completions = getCompletions();
-  const result: DailyProgress[] = [];
+export async function getLast7DaysProgress(days: DayConfig[]): Promise<DailyProgress[]> {
+  try {
+    const res = await fetch('/api/completions/week');
+    const allCompletions: Record<string, Record<string, Record<string, boolean>>> =
+      res.ok ? await res.json() : {};
 
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().split('T')[0];
-    const dayId = JS_DAY_TO_ID[d.getDay()];
-    const dayConfig = days.find((day) => day.id === dayId);
-    const dayCompletions = completions[dateStr]?.[dayId] ?? {};
-    const total = dayConfig?.tasks.length ?? 0;
-    const completed = Object.values(dayCompletions).filter(Boolean).length;
-
-    result.push({
-      date: dateStr,
-      label: dayConfig?.shortName ?? '—',
-      total,
-      completed,
-      percent: total > 0 ? Math.round((completed / total) * 100) : 0,
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      const dateStr = d.toISOString().split('T')[0];
+      const dayId = JS_DAY_TO_ID[d.getDay()];
+      const dayConfig = days.find((day) => day.id === dayId);
+      const dayCompletions = allCompletions[dateStr]?.[dayId] ?? {};
+      const total = dayConfig?.tasks.length ?? 0;
+      const completed = Object.values(dayCompletions).filter(Boolean).length;
+      return {
+        date: dateStr,
+        label: dayConfig?.shortName ?? '—',
+        total,
+        completed,
+        percent: total > 0 ? Math.round((completed / total) * 100) : 0,
+      };
     });
+  } catch {
+    return [];
   }
-
-  return result;
 }
 
-export function getTodayProgress(days: DayConfig[]): DailyProgress {
-  const all = getLast7DaysProgress(days);
-  return all[all.length - 1];
+export async function getTodayProgress(days: DayConfig[]): Promise<DailyProgress> {
+  const all = await getLast7DaysProgress(days);
+  return (
+    all[all.length - 1] ?? {
+      date: todayString(),
+      label: '—',
+      total: 0,
+      completed: 0,
+      percent: 0,
+    }
+  );
 }
 
-export function getWeekMissionCount(): { completed: number; total: number } {
-  const missions = getThisWeekMissions();
-  const completed = Object.values(missions).filter(Boolean).length;
-  return { completed, total: 7 };
+// ── PIN ────────────────────────────────────────────────────────────────────────
+
+export async function verifyPin(pin: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/pin?pin=${encodeURIComponent(pin)}`);
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.valid;
+  } catch {
+    return false;
+  }
 }
 
-export function clearAllData(): void {
-  localStorage.removeItem(COMPLETIONS_KEY);
-  localStorage.removeItem(MISSIONS_KEY);
+export async function setPin(pin: string): Promise<void> {
+  await fetch('/api/pin', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pin }),
+  });
 }

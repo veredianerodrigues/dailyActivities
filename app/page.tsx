@@ -2,26 +2,40 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { todayDayId, getTodayProgress, getWeekMissionCount } from '@/lib/store';
-import { getCustomDays } from '@/lib/store';
+import {
+  todayDayId,
+  todayString,
+  getCustomDays,
+  getDayCompletions,
+  getThisWeekMissions,
+} from '@/lib/store';
 import { DayConfig } from '@/lib/types';
 import BottomNav from '@/components/BottomNav';
 
 export default function HomePage() {
   const [todayId, setTodayId] = useState('');
   const [todayDay, setTodayDay] = useState<DayConfig | null>(null);
+  const [days, setDays] = useState<DayConfig[]>([]);
   const [progress, setProgress] = useState({ completed: 0, total: 0, percent: 0 });
   const [missions, setMissions] = useState({ completed: 0, total: 7 });
 
   useEffect(() => {
-    const days = getCustomDays();
-    const id = todayDayId();
-    setTodayId(id);
-    const day = days.find((d) => d.id === id) ?? null;
-    setTodayDay(day);
-    const prog = getTodayProgress(days);
-    setProgress(prog);
-    setMissions(getWeekMissionCount());
+    (async () => {
+      const id = todayDayId();
+      setTodayId(id);
+      const [loadedDays, completions, weekMissions] = await Promise.all([
+        getCustomDays(),
+        getDayCompletions(todayString(), id),
+        getThisWeekMissions(),
+      ]);
+      setDays(loadedDays);
+      const day = loadedDays.find((d) => d.id === id) ?? null;
+      setTodayDay(day);
+      const total = day?.tasks.length ?? 0;
+      const completed = Object.values(completions).filter(Boolean).length;
+      setProgress({ completed, total, percent: total > 0 ? Math.round((completed / total) * 100) : 0 });
+      setMissions({ completed: Object.values(weekMissions).filter(Boolean).length, total: 7 });
+    })();
   }, []);
 
   return (
@@ -31,7 +45,6 @@ export default function HomePage() {
         className="relative overflow-hidden px-6 pt-12 pb-8"
         style={{ background: todayDay?.color ?? '#3B82F6' }}
       >
-        {/* Decorative blobs */}
         <div
           className="absolute rounded-full opacity-10"
           style={{ width: 160, height: 160, background: 'white', top: -50, right: -30 }}
@@ -47,7 +60,6 @@ export default function HomePage() {
         </h1>
         <p className="text-white/80 text-sm font-semibold mt-1">{todayDay?.subtitle}</p>
 
-        {/* Today's progress pill */}
         <div className="mt-4 flex items-center gap-3">
           <div className="flex-1 bg-white/20 rounded-full h-3">
             <div
@@ -63,7 +75,6 @@ export default function HomePage() {
 
       {/* Main actions */}
       <div className="flex-1 px-5 pt-5 flex flex-col gap-3">
-        {/* See today's routine */}
         <Link
           href={`/rotina/${todayId}`}
           className="flex items-center gap-4 rounded-2xl p-4 text-white font-black text-lg shadow-lg active:scale-95 transition-transform"
@@ -77,7 +88,6 @@ export default function HomePage() {
           <span className="ml-auto text-2xl">→</span>
         </Link>
 
-        {/* Missions summary */}
         <Link
           href="/missoes"
           className="flex items-center gap-4 rounded-2xl p-4 bg-gradient-to-r from-amber-400 to-orange-500 text-white font-black text-lg shadow-lg active:scale-95 transition-transform"
@@ -92,14 +102,13 @@ export default function HomePage() {
           <span className="ml-auto text-2xl">→</span>
         </Link>
 
-        {/* Other days quick access */}
         <div>
           <p className="text-gray-400 text-xs font-bold uppercase tracking-widest px-1 mb-2">
             Outros dias
           </p>
           <div className="grid grid-cols-7 gap-1.5">
             {['segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo'].map((id) => {
-              const day = getCustomDays().find((d) => d.id === id);
+              const day = days.find((d) => d.id === id);
               const isToday = id === todayId;
               return (
                 <Link
@@ -124,7 +133,6 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Dashboard link */}
         <Link
           href="/dashboard"
           className="flex items-center gap-3 rounded-2xl p-4 bg-gray-50 border border-gray-100 active:bg-gray-100 transition-colors"
@@ -138,7 +146,6 @@ export default function HomePage() {
         </Link>
       </div>
 
-      {/* Admin gear */}
       <Link
         href="/admin"
         className="fixed bottom-24 right-5 w-11 h-11 rounded-full bg-gray-800 flex items-center justify-center shadow-lg active:scale-90 transition-transform z-50"

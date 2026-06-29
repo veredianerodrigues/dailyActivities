@@ -1,11 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import {
-  getCustomDays,
-  getThisWeekMissions,
-  setMissionComplete,
-} from '@/lib/store';
+import { getCustomDays, getThisWeekMissions, setMissionComplete } from '@/lib/store';
 import { DayConfig } from '@/lib/types';
 import BottomNav from '@/components/BottomNav';
 
@@ -14,8 +10,14 @@ export default function MissoesPage() {
   const [missions, setMissions] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    setDays(getCustomDays());
-    setMissions(getThisWeekMissions());
+    (async () => {
+      const [loadedDays, loadedMissions] = await Promise.all([
+        getCustomDays(),
+        getThisWeekMissions(),
+      ]);
+      setDays(loadedDays);
+      setMissions(loadedMissions);
+    })();
   }, []);
 
   const toggle = (dayId: string) => {
@@ -62,16 +64,15 @@ export default function MissoesPage() {
             return (
               <button
                 key={day.id}
+                type="button"
                 onClick={() => toggle(day.id)}
                 className="relative overflow-hidden rounded-2xl p-4 text-left active:scale-95 transition-all"
                 style={{ background: '#1E293B', border: `1px solid rgba(255,255,255,0.06)` }}
               >
-                {/* Top accent */}
                 <div
                   className="absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl"
                   style={{ background: done ? '#22c55e' : day.color }}
                 />
-
                 <div className="flex items-start gap-3">
                   <span className="text-3xl leading-none flex-shrink-0">{day.mission.icon}</span>
                   <div className="flex-1 min-w-0">
@@ -83,7 +84,6 @@ export default function MissoesPage() {
                     </div>
                     <div className="text-white font-bold text-sm leading-snug">{day.mission.text}</div>
                   </div>
-                  {/* Check */}
                   <div
                     className="w-8 h-8 rounded-xl flex-shrink-0 flex items-center justify-center border-2 text-sm font-black transition-all"
                     style={{
@@ -100,7 +100,6 @@ export default function MissoesPage() {
           })}
         </div>
 
-        {/* Celebration */}
         {completedCount === 7 && (
           <div className="mt-4 rounded-2xl p-4 bg-gradient-to-r from-yellow-500 to-orange-500 text-white text-center">
             <div className="text-4xl mb-2">🏆🎉🏆</div>

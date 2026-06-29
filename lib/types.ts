@@ -11,6 +11,7 @@ export interface Task {
   emoji: string;
   note?: string;
   isMission?: boolean;
+  order?: number;
   subTasks?: SubTask[];
 }
 

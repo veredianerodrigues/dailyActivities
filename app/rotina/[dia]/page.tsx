@@ -18,20 +18,24 @@ import BottomNav from '@/components/BottomNav';
 export default function RotinaPage() {
   const { dia } = useParams<{ dia: string }>();
   const router = useRouter();
-  const [days, setDays] = useState<DayConfig[]>([]);
   const [day, setDay] = useState<DayConfig | null>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [missionDone, setMissionDone] = useState(false);
   const today = todayString();
 
   useEffect(() => {
-    const loaded = getCustomDays();
-    setDays(loaded);
-    const found = loaded.find((d) => d.id === dia);
-    if (!found) { router.replace('/'); return; }
-    setDay(found);
-    setChecked(getDayCompletions(today, dia));
-    setMissionDone(isMissionComplete(dia));
+    (async () => {
+      const loaded = await getCustomDays();
+      const found = loaded.find((d) => d.id === dia);
+      if (!found) { router.replace('/'); return; }
+      setDay(found);
+      const [completions, missionStatus] = await Promise.all([
+        getDayCompletions(today, dia),
+        isMissionComplete(dia),
+      ]);
+      setChecked(completions);
+      setMissionDone(missionStatus);
+    })();
   }, [dia, today, router]);
 
   const toggle = useCallback(
@@ -66,11 +70,9 @@ export default function RotinaPage() {
         className="relative overflow-hidden px-5 pt-10 pb-5 flex-shrink-0"
         style={{ background: day.color }}
       >
-        {/* Blobs */}
         <div className="absolute rounded-full bg-white/10 w-28 h-28 -top-8 right-4" />
         <div className="absolute rounded-full bg-white/8 w-16 h-16 -bottom-6 left-1/3" />
 
-        {/* Nav arrows */}
         <div className="flex items-center justify-between mb-3 relative z-10">
           {prevDay ? (
             <Link href={`/rotina/${prevDay}`} className="text-white/70 text-2xl font-black px-1">←</Link>
@@ -85,7 +87,6 @@ export default function RotinaPage() {
         <h1 className="text-white text-3xl font-black relative z-10">{day.name}</h1>
         <p className="text-white/80 text-sm font-semibold mt-1 relative z-10">{day.subtitle}</p>
 
-        {/* Progress */}
         <div className="mt-3 flex items-center gap-3 relative z-10">
           <div className="flex-1 bg-white/25 rounded-full h-2.5">
             <div
@@ -139,7 +140,6 @@ export default function RotinaPage() {
                 dayColor={day.color}
                 onToggle={() => toggle(task.id)}
               />
-              {/* Sub-tasks */}
               {task.subTasks && (
                 <div className="ml-12 mt-1 flex flex-col gap-1">
                   {task.subTasks.map((sub) => (
@@ -195,7 +195,6 @@ function TaskRow({
         opacity: checked ? 0.65 : 1,
       }}
     >
-      {/* Checkbox */}
       <div
         className="w-6 h-6 rounded-lg flex-shrink-0 border-2 flex items-center justify-center text-xs font-black text-white transition-all"
         style={{
@@ -205,11 +204,7 @@ function TaskRow({
       >
         {checked ? '✓' : ''}
       </div>
-
-      {/* Emoji */}
       <span className="text-lg flex-shrink-0 w-6 text-center">{task.emoji}</span>
-
-      {/* Info */}
       <div className="flex-1 min-w-0">
         {task.time && (
           <div
